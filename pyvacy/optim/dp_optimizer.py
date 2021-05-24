@@ -27,7 +27,10 @@ def make_optimizer_class(cls):
                     if param.requires_grad:
                         total_norm += param.grad.data.norm(2).item() ** 2.
             total_norm = total_norm ** .5
-            clip_coef = min(self.l2_norm_clip / (total_norm + 1e-6), 1.)
+            if self.l2_norm_clip:  # Case: standard DP-SGD with clipping.
+                clip_coef = min(self.l2_norm_clip / (total_norm + 1e-6), 1.)
+            else:  # No clipping.
+                clip_coef = 1.
 
             for group in self.param_groups:
                 for param, accum_grad in zip(group['params'], group['accum_grads']):
@@ -45,7 +48,10 @@ def make_optimizer_class(cls):
                 for param, accum_grad in zip(group['params'], group['accum_grads']):
                     if param.requires_grad:
                         param.grad.data = accum_grad.clone()
-                        param.grad.data.add_(self.l2_norm_clip * self.noise_multiplier * torch.randn_like(param.grad.data))
+                        if self.l2_norm_clip:  # Case: standard DP-SGD with clipping
+                            param.grad.data.add_(self.l2_norm_clip * self.noise_multiplier * torch.randn_like(param.grad.data))
+                        else:  # No clipping.
+                            param.grad.data.add_(self.noise_multiplier * torch.randn_like(param.grad.data))
                         param.grad.data.mul_(self.microbatch_size / self.minibatch_size)
             super(DPOptimizerClass, self).step(*args, **kwargs)
 
